@@ -3,178 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>极简网页直播工具 (GitHub Pages 版)</title>
+    <title>极简直播间 - 稳定版</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; background: #f5f7fa; color: #333; margin: 0; padding: 20px; }
-        .container { width: 95%; max-width: 900px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
-        #video-wrapper { width: 100%; background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; }
-        video { width: 100%; height: 100%; object-fit: contain; }
-        .badge { position: absolute; top: 15px; left: 15px; padding: 6px 12px; border-radius: 20px; color: white; font-size: 14px; font-weight: bold; z-index: 10; }
-        #status-bar { margin-top: 15px; padding: 10px; border-radius: 6px; font-size: 14px; text-align: center; background: #eef2f7; }
-        .btn-host { background: #ff4d4f; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px 0; font-weight: bold; }
-        .tips { font-size: 12px; color: #666; margin-top: 10px; line-height: 1.6; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; padding: 20px; }
+        .container { width: 100%; max-width: 800px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        #video-wrapper { width: 100%; background: #000; border-radius: 8px; position: relative; aspect-ratio: 16/9; overflow: hidden; }
+        video { width: 100%; height: 100%; }
+        /* 关键：观众点击遮罩 */
+        #play-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); color: white; display: flex;
+            justify-content: center; align-items: center; cursor: pointer; z-index: 100;
+        }
+        #status { margin-top: 15px; font-size: 14px; color: #666; }
+        .btn { padding: 10px 20px; background: #ff4d4f; color: white; border: none; border-radius: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div id="video-wrapper">
-        <div id="role-badge" class="badge" style="background: #999;">正在加载...</div>
+        <div id="play-overlay" style="display: none;" onclick="manualPlay()">
+            <div style="text-align: center;">
+                <div style="font-size: 50px;">▶</div>
+                <p>检测到直播流，点击开始观看</p>
+            </div>
+        </div>
         <video id="v" autoplay playsinline controls></video>
     </div>
-
-    <div id="status-bar">正在连接 PeerJS 服务器...</div>
-
-    <div id="host-controls" style="display: none; text-align: center;">
-        <button class="btn-host" onclick="startHostStream()">点击开启/重置屏幕分享</button>
-        <p class="tips">提示：点击后请在浏览器弹窗中选择“整个屏幕”并勾选“分享系统音频”。</p>
-    </div>
-
-    <div class="tips">
-        <b>使用说明：</b><br>
-        1. 主播端地址：<code id="host-url"></code><br>
-        2. 观众端地址：<code id="view-url"></code>
+    <div id="status">正在初始化...</div>
+    <div id="host-zone" style="display:none; margin-top:15px; text-align:center;">
+        <button class="btn" onclick="startHost()">1. 点击开启屏幕分享</button>
     </div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-
 <script>
-    // --- 配置区 ---
-    // 为了避免 ID 冲突，建议将下面的字符串改得复杂一点
     const ROOM_ID = "MY_PRIVATE_LIVE_ROOM_CHENG_094"; 
-    
-    // 网络打洞配置 (STUN 服务器)
-    // --- 终极修复配置：加入 TURN 中转服务器 ---
-        const peerConfig = {
-            config: {
-                'iceServers': [
-                    { url: 'stun:stun.l.google.com:19302' },
-                    { url: 'stun:stun.qq.com:3478' },
-                    // 使用开放的中转服务器，解决 99% 的连接超时问题
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                ]
-            }
-        };
+    const peerConfig = {
+        config: {
+            'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun.qq.com:3478' },
+                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+            ]
+        }
+    };
 
     const videoEl = document.getElementById('v');
-    const statusEl = document.getElementById('status-bar');
-    const badgeEl = document.getElementById('role-badge');
-    const hostControls = document.getElementById('host-controls');
-
+    const statusEl = document.getElementById('status');
+    const overlay = document.getElementById('play-overlay');
     const params = new URLSearchParams(window.location.search);
     const isHost = params.get('role') === 'host';
 
-    // 显示当前地址方便复制
-    const baseUrl = window.location.origin + window.location.pathname;
-    document.getElementById('host-url').innerText = baseUrl + "?role=host";
-    document.getElementById('view-url').innerText = baseUrl;
-
-    // 初始化 Peer
     const peer = isHost ? new Peer(ROOM_ID, peerConfig) : new Peer(peerConfig);
 
-    let localStream = null;
-
     peer.on('open', (id) => {
-        console.log('Peer ID:', id);
         if (isHost) {
-            badgeEl.innerText = "主播端";
-            badgeEl.style.background = "#ff4d4f";
-            statusEl.innerText = "就绪！请点击下方按钮开启分享";
-            hostControls.style.display = "block";
-            videoEl.muted = true; // 主播端静音防止回音
+            document.getElementById('host-zone').style.display = 'block';
+            statusEl.innerText = "主播端就绪";
+            videoEl.muted = true;
         } else {
-            badgeEl.innerText = "观众端";
-            badgeEl.style.background = "#1890ff";
-            statusEl.innerText = "正在寻找主播...";
-            startViewerLogic();
+            statusEl.innerText = "观众端：正在呼叫主播...";
+            startViewer();
         }
     });
 
     // --- 主播逻辑 ---
-    async function startHostStream() {
+    async function startHost() {
         try {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-            // 弹出屏幕共享选择框
-            localStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { cursor: "always" },
-                audio: true
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            videoEl.srcObject = stream;
+            statusEl.innerText = "🔴 直播中...";
+            peer.on('call', call => {
+                console.log("收到连接请求，发送流...");
+                call.answer(stream);
             });
-            videoEl.srcObject = localStream;
-            statusEl.innerText = "🔴 正在直播：画面已同步至云端";
-            statusEl.style.color = "#ff4d4f";
-
-            // 当有观众 call 进来时，自动应答
-            peer.on('call', (call) => {
-                console.log("收到观众连接请求");
-                call.answer(localStream);
-            });
-        } catch (err) {
-            statusEl.innerText = "错误：未授权屏幕共享";
-            console.error(err);
-        }
+        } catch (e) { statusEl.innerText = "未授权分享"; }
     }
 
     // --- 观众逻辑 ---
-    function startViewerLogic() {
-        let retryCount = 0;
-        
-        const connectToHost = () => {
-            console.log("尝试连接主播...");
-            // 发送一个空流触发呼叫
+    function startViewer() {
+        const connect = () => {
             const call = peer.call(ROOM_ID, new MediaStream());
-            
-            call.on('stream', (remoteStream) => {
-                console.log("成功接收画面轨道");
+            call.on('stream', remoteStream => {
+                console.log("收到流，显示播放按钮");
                 videoEl.srcObject = remoteStream;
-                statusEl.innerText = "✅ 连接成功：正在接收画面";
-                statusEl.style.color = "#52c41a";
-                // 某些浏览器需要静音才能自动播放
-                videoEl.play().catch(() => {
-                    statusEl.innerText = "✅ 请点击视频区域开启声音";
-                });
-            });
-
-            call.on('error', (err) => {
-                console.log("呼叫失败:", err);
+                overlay.style.display = 'flex'; // 显示点击层
+                statusEl.innerText = "连接成功，请点击画面开始观看";
             });
         };
-
-        // 每 5 秒尝试连接一次，直到成功
-        const timer = setInterval(() => {
-            if (videoEl.srcObject) {
-                clearInterval(timer);
-                return;
-            }
-            retryCount++;
-            statusEl.innerText = `正在尝试连接主播 (第 ${retryCount} 次)...`;
-            connectToHost();
-        }, 5000);
-
-        connectToHost();
+        setInterval(() => { if(!videoEl.srcObject) connect(); }, 5000);
+        connect();
     }
 
-    // 错误处理
-    peer.on('error', (err) => {
-        if (err.type === 'peer-unavailable') {
-            statusEl.innerText = "提示：主播尚未开启分享，请等待...";
-        } else {
-            console.error("PeerJS 错误类型:", err.type);
-            statusEl.innerText = "网络连接异常: " + err.type;
-        }
+    // 用户手动点击播放（绕过浏览器限制）
+    function manualPlay() {
+        videoEl.play().then(() => {
+            overlay.style.display = 'none';
+            statusEl.innerText = "正在播放...";
+        }).catch(err => {
+            console.error("播放失败:", err);
+            // 如果还是不行，尝试静音播放
+            videoEl.muted = true;
+            videoEl.play();
+            overlay.style.display = 'none';
+            statusEl.innerText = "静音播放中（浏览器限制），请手动开启声音";
+        });
+    }
+
+    peer.on('error', err => {
+        if(err.type === 'peer-unavailable') statusEl.innerText = "主播还没开播，请等待...";
     });
 </script>
-
 </body>
 </html>
