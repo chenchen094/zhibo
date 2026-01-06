@@ -93,26 +93,39 @@
         }
     }
 
-    // --- 观众端：连接并接收流 ---
-    function connectToHost() {
-        statusEl.innerText = "正在尝试握手...";
-        // 关键：不发空流，直接呼叫
-        const call = peer.call(ROOM_ID, new MediaStream());
-        
-        call.on('stream', remoteStream => {
-            console.log("成功接收媒体流轨道");
-            videoEl.srcObject = remoteStream;
-            overlay.style.display = 'flex'; // 显示播放遮罩
-            statusEl.innerText = "✅ 画面已同步，点击视频播放";
+    
+    // --- 观众端：连接逻辑修改 ---
+async function connectToHost() {
+    statusEl.innerText = "正在发起视频协商...";
+    
+    try {
+        // 【关键改动】不再发送 new MediaStream()，而是强制要求接收音视频
+        // 我们甚至可以伪造一个静音轨道来骗过浏览器的协商机制
+        const call = peer.call(ROOM_ID, null, {
+            sdpTransform: (sdp) => sdp // 保持原样
         });
 
-        // 容错处理
-        setTimeout(() => {
-            if (!videoEl.srcObject) {
-                statusEl.innerText = "连接缓慢，请确保主播已开启分享，或尝试点击刷新按钮";
-            }
-        }, 10000);
+        if (!call) {
+            statusEl.innerText = "呼叫创建失败，请刷新重试";
+            return;
+        }
+
+        call.on('stream', remoteStream => {
+            console.log("✅ 收到媒体流轨道！");
+            videoEl.srcObject = remoteStream;
+            overlay.style.display = 'flex'; 
+            statusEl.innerText = "✅ 连接成功，点画面开始播放";
+        });
+
+        call.on('error', err => {
+            console.error("呼叫中途出错:", err);
+            statusEl.innerText = "连接中断: " + err;
+        });
+
+    } catch (e) {
+        console.error("连接异常:", e);
     }
+}
 
     function manualPlay() {
         videoEl.play().then(() => {
