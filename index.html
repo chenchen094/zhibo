@@ -45,15 +45,26 @@
     const ROOM_ID = "MY_PRIVATE_LIVE_ROOM_CHENG_094"; 
     
     // 网络打洞配置 (STUN 服务器)
-    const peerConfig = {
-        config: {
-            'iceServers': [
-                { url: 'stun:stun.qq.com:3478' },
-                { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' }
-            ]
-        }
-    };
+    // --- 终极修复配置：加入 TURN 中转服务器 ---
+        const peerConfig = {
+            config: {
+                'iceServers': [
+                    { url: 'stun:stun.l.google.com:19302' },
+                    { url: 'stun:stun.qq.com:3478' },
+                    // 使用开放的中转服务器，解决 99% 的连接超时问题
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ]
+            }
+        };
 
     const videoEl = document.getElementById('v');
     const statusEl = document.getElementById('status-bar');
