@@ -18,7 +18,7 @@
 <div class="container">
     <div id="v-box">
         <div id="overlay" onclick="manualPlay()">点击开启画面与声音</div>
-        <video id="v" autoplay playsinline controls></video>
+       <video id="v" autoplay muted playsinline webkit-playsinline controls></video>
     </div>
     <div id="status">系统初始化中...</div>
     <div id="ui" style="text-align:center;"></div>
@@ -111,15 +111,22 @@
     }
 
     function manualPlay() {
-        videoEl.play().then(() => {
-            overlay.style.display = 'none';
-        }).catch(() => {
-            videoEl.muted = true;
-            videoEl.play();
-            overlay.style.display = 'none';
-            statusEl.innerText = "浏览器限制，已静音播放";
-        });
-    }
+    // 1. 强制静音，这是移动端播放的通行证
+    videoEl.muted = true; 
+    
+    videoEl.play().then(() => {
+        overlay.style.display = 'none';
+        statusEl.innerText = "已加载画面，请手动点击右下角音量图标开启声音";
+        
+        // 2. 尝试在 1 秒后解除静音（部分手机允许交互后解除）
+        setTimeout(() => {
+            videoEl.muted = false;
+        }, 1000);
+    }).catch(err => {
+        console.error("移动端播放失败:", err);
+        statusEl.innerText = "播放被拦截，请再次点击屏幕";
+    });
+}
 
     peer.on('error', (err) => {
         if (err.type === 'peer-unavailable') statusEl.innerText = "找不到主播，请确保主播已开启页面";
