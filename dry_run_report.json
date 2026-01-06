@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2025-12-23T06:39:36.470Z",
+  "runtimeMs": 12707,
+  "config": {
+    "SYMBOL": "ETHUSDT",
+    "INTERVAL": 3000,
+    "PRICE_DIFF_PCT_THRESHOLD": 0.25,
+    "FUNDING_DIFF_THRESHOLD": 0.0005,
+    "FUNDING_FILTER_ENABLED": false,
+    "LEVERAGE": 50,
+    "ACCOUNT_USDT_PER_EXCHANGE": 200,
+    "MAX_MARGIN_PCT": 0.2,
+    "MAX_ADVERSE_SPREAD_PCT": 0.3,
+    "EXIT_SPREAD_PCT": 0.05,
+    "MAX_HOLD_MS": 3600000
+  },
+  "stats": {
+    "opportunities": 0,
+    "entriesAttempted": 0,
+    "entriesBlocked": 0,
+    "entriesOpened": 0,
+    "exitsByTakeProfit": 0,
+    "exitsByTimeout": 0,
+    "stopByAdverseSpread": 0,
+    "wouldLiquidate": 0,
+    "fundingReversal": 0,
+    "lastFundingDiffSign": null,
+    "open": null
+  }
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>主播端</title>
+</head>
+
+<body>
+    <h2>主播端 (桌面分享)</h2>
+    <button id="start-btn" onclick="startCapture()">1. 开启桌面采集</button>
+    <p>状态：<span id="status" style="color: blue">等待采集桌面...</span></p>
+    <p>我的直播ID: <b id="my-id" style="color:red; font-size: 20px;">正在生成...</b></p>
+    <video id="localVideo" autoplay muted style="width: 400px; border:1px solid #ccc;"></video>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script>
+        const peer = new Peer({
+            config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
+        });
+
+        let localStream = null;
+
+        async function startCapture() {
+            try {
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: true
+                });
+                document.getElementById('localVideo').srcObject = localStream;
+                document.getElementById('status').innerText = "直播中 - 随时可以连接";
+                document.getElementById('status').style.color = "green";
+                document.getElementById('start-btn').disabled = true;
+            } catch (err) {
+                console.error("采集失败: " + err);
+                alert("请授权屏幕采集");
+            }
+        }
+
+        peer.on('open', id => {
+            document.getElementById('my-id').innerText = id;
+        });
+
+        peer.on('call', call => {
+            console.log("有观众呼叫...");
+            if (!localStream) {
+                alert("有观众想看直播，请先开启桌面采集！");
+                return;
+            }
+            // 响应呼叫
+            call.answer(localStream);
+            console.log("已发送画面给观众");
+        });
+
+        peer.on('error', err => console.error("PeerJS错误:", err));
+    </script>
+</body>
+
+</html>

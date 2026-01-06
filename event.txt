@@ -1,0 +1,264 @@
+//@version=6
+indicator("BBRSI Pro (BTC+ETH) • 2m + CN Time", shorttitle="BBRSI Pro 2m CN", overlay=true, max_labels_count=500)
+
+// ========= 仅在 2 分钟下启用计算/推送 =========
+isTwoMinute = timeframe.isminutes and timeframe.multiplier == 2
+calcEnabled = isTwoMinute
+
+// ================= 参数 =================
+bb_length  = input.int(14, "Bollinger Length", minval=5)
+bb_mult    = input.float(2.0, "Bollinger StdDev", minval=0.5, maxval=10)
+rsiLength  = input.int(11, "RSI Length", minval=1)
+rsiUpper   = input.int(75, "RSI Upper Level", minval=51, maxval=99)
+rsiLower   = input.int(25, "RSI Lower Level", minval=1,  maxval=49)
+dFilter    = input.bool(true, "Use Directional Filter")
+fastTyp    = input.string("EMA", "Fast MA Type", options=["SMA","EMA","WMA","VWMA","SMMA","DEMA","TEMA","HullMA","ZEMA","TMA","SSMA"])
+fastLen    = input.int(50, "Fast - Length", minval=1)
+slowTyp    = input.string("EMA", "Slow MA Type", options=["SMA","EMA","WMA","VWMA","SMMA","DEMA","TEMA","HullMA","ZEMA","TMA","SSMA"])
+slowLen    = input.int(200, "Slow - Length", minval=1)
+dCandles   = input.int(3, "Candles to test Market Direction", minval=2)
+resoln_    = input.float(0.0, "Candle body past BB boundary (ticks)", minval=0)
+
+// 统计参数（基于 2 分钟）
+holdMins = input.int(10, "结果统计时长（分钟）", minval=1)
+tfSec    = 120
+holdBars = math.max(1, math.round(holdMins * 60 / tfSec))
+
+// 本根K线“收盘时刻”的时间戳（毫秒）
+barCloseTs = time + tfSec * 1000
+
+// 文案：固定显示“2 分钟”
+tfText = "2 分钟"
+
+// ===== 标记开关（新增：入场箭头） =====
+group_marks = "Markers"
+showEntryArrows = input.bool(true, "显示入场箭头(CALL↑ / PUT↓)", group=group_marks)
+
+// ===== 同时监控“二饼”（ETH）开关与设置 =====
+monitorEth  = input.bool(true, "同时监控二饼(ETH)")
+ethSymbol   = input.symbol("BINANCE:ETHUSDT", "二饼合约代码")
+workTfInput = input.timeframe("", "二饼信号周期（留空=2m）")
+workTf      = workTfInput == "" ? "2" : workTfInput  // 默认 2 分钟
+
+// ================= 安全 MA 变体 =================
+maVariant(maType, src, len) =>
+    sma_  = ta.sma(src, len)
+    ema1  = ta.ema(src, len)
+    ema2  = ta.ema(ema1, len)
+    dema_ = 2.0 * ema1 - ema2
+    tema_ = 3.0 * (ema1 - ema2) + ta.ema(ema2, len)
+    hull_ = ta.wma(2.0 * ta.wma(src, math.round(len / 2.0)) - ta.wma(src, len), math.round(math.sqrt(len)))
+    tma_  = ta.sma(ta.sma(src, len), len)
+    zema_ = ema1 + (ema1 - ema2)
+    switch maType
+        "EMA"     => ema1
+        "SMA"     => sma_
+        "WMA"     => ta.wma(src, len)
+        "VWMA"    => ta.vwma(src, len)
+        "SMMA"    => ta.rma(src, len)
+        "DEMA"    => dema_
+        "TEMA"    => tema_
+        "HullMA"  => hull_
+        "ZEMA"    => zema_
+        "TMA"     => tma_
+        "SSMA"    => ema1
+        => sma_
+
+// ================= 主体计算（大饼=当前图） =================
+SlowEMA = maVariant(slowTyp, close, slowLen)
+FastEMA = maVariant(fastTyp,  close, fastLen)
+
+// ——抽出 rising / falling，避免一致性报错
+isUpTrend   = ta.rising(SlowEMA, dCandles) and FastEMA > SlowEMA
+isDownTrend = ta.falling(SlowEMA, dCandles) and FastEMA < SlowEMA
+mDirection  = isUpTrend ? 1 : isDownTrend ? -1 : 0
+
+plot(SlowEMA, "SlowEMA", color=color.red,   linewidth=2)
+plot(FastEMA, "FastEMA", color=color.olive, linewidth=2)
+
+point  = syminfo.mintick
+resoln = point * resoln_
+
+rsiVal  = ta.rsi(close, rsiLength)
+bbBasis = ta.sma(close, bb_length)
+dev     = ta.stdev(close, bb_length)
+bbHigh  = bbBasis + bb_mult * dev
+bbLow   = bbBasis - bb_mult * dev
+
+plot(bbBasis, "Basis Line", color=color.new(color.navy, 50))
+ubo = plot(bbHigh, "Upper Band", color=color.new(color.blue, 20))
+lbo = plot(bbLow,  "Lower Band", color=color.new(color.blue, 20))
+fill(ubo, lbo, color=color.new(color.gray, 80))
+
+rsiRange   = rsiVal > rsiLower and rsiVal < rsiUpper
+FastWarnHi = ((close > open) and (not dFilter or mDirection < 0)) ? rsiRange and (close > bbHigh + resoln) : false
+FastWarnLo = ((close < open) and (not dFilter or mDirection > 0)) ? rsiRange and (close < bbLow  - resoln) : false
+
+FastBreakHi = ((not dFilter or mDirection < 0) and FastWarnHi[1] and (not FastWarnHi)) ? rsiRange and (close[1] >= bbHigh[1] + resoln) : false  // PUT
+FastBreakLo = ((not dFilter or mDirection > 0) and FastWarnLo[1] and (not FastWarnLo)) ? rsiRange and (close[1] <= bbLow[1]  - resoln) : false  // CALL
+
+// 预警/突破形状（保留）
+plotshape(FastWarnHi, title="BB High Warning", style=shape.diamond, color=color.fuchsia, location=location.abovebar, size=size.tiny)
+plotshape(FastWarnLo, title="BB Low  Warning", style=shape.diamond, color=color.fuchsia, location=location.belowbar, size=size.tiny)
+plotshape(FastBreakHi, title="BB High Alert PUT",  style=shape.triangledown, color=color.red,   text="PUT",  location=location.abovebar)
+plotshape(FastBreakLo, title="BB Low  Alert CALL", style=shape.triangleup,   color=color.green, text="CALL", location=location.belowbar)
+
+// ===== 新增：入场箭头（指向当前信号 K 线） =====
+plotshape(calcEnabled and showEntryArrows and FastBreakLo, title="CALL Entry Arrow",
+     style=shape.arrowup,   location=location.belowbar, size=size.large, color=color.new(color.lime, 0), text="CALL")
+plotshape(calcEnabled and showEntryArrows and FastBreakHi, title="PUT Entry Arrow",
+     style=shape.arrowdown, location=location.abovebar, size=size.large, color=color.new(color.red, 0),  text="PUT")
+
+// ================= 工具：北京时间 =================
+fmtCN(ts) => str.format("{0,time,yyyy-MM-dd HH:mm:ss}", ts, "Asia/Shanghai")
+
+// ================= 大饼统计（递推累计） =================
+callSig   = FastBreakLo
+putSig    = FastBreakHi
+callEntry = callSig ? close : na
+putEntry  = putSig  ? close : na
+
+callDoneNow = callSig[holdBars]
+putDoneNow  = putSig[holdBars]
+callEntryN  = callEntry[holdBars]
+putEntryN   = putEntry[holdBars]
+callWinNow  = callDoneNow and close > callEntryN
+putWinNow   = putDoneNow  and close < putEntryN
+
+var int callTotal = 0
+var int callWins  = 0
+var int putTotal  = 0
+var int putWins   = 0
+
+isOK       = barstate.isconfirmed and calcEnabled
+callTotal := nz(callTotal[1]) + (isOK and callDoneNow ? 1 : 0)
+putTotal  := nz(putTotal[1])  + (isOK and putDoneNow  ? 1 : 0)
+callWins  := nz(callWins[1])  + (isOK and callWinNow  ? 1 : 0)
+putWins   := nz(putWins[1])   + (isOK and putWinNow   ? 1 : 0)
+
+strWR(wins, total) => total > 0 ? str.tostring(math.round(100 * wins / total, 1)) + "%" : "-"
+
+
+
+
+// ================= 二饼（ETH）信号与统计 =================
+f_calc_sig() =>
+    slow = maVariant(slowTyp, close, slowLen)
+    fast = maVariant(fastTyp, close, fastLen)
+    upT = ta.rising(slow, dCandles) and fast > slow
+    dnT = ta.falling(slow, dCandles) and fast < slow
+    md  = upT ? 1 : dnT ? -1 : 0
+
+    rsiV = ta.rsi(close, rsiLength)
+    bbB  = ta.sma(close, bb_length)
+    dv   = ta.stdev(close, bb_length)
+    bbH  = bbB + bb_mult * dv
+    bbL  = bbB - bb_mult * dv
+
+    rOK  = rsiV > rsiLower and rsiV < rsiUpper
+    fwH  = ((close > open) and (not dFilter or md < 0)) ? rOK and (close > bbH) : false
+    fwL  = ((close < open) and (not dFilter or md > 0)) ? rOK and (close < bbL) : false
+    fbH  = ((not dFilter or md < 0) and fwH[1] and (not fwH)) ? rOK and (close[1] >= bbH[1]) : false
+    fbL  = ((not dFilter or md > 0) and fwL[1] and (not fwL)) ? rOK and (close[1] <= bbL[1]) : false
+
+    [fbL, fbH, close, time_close]
+
+// 通过 request.security 获取二饼信号（默认 2m）
+var bool  callSigE = false
+var bool  putSigE  = false
+var float closeE   = na
+var int   tE       = na
+if monitorEth
+    [_callE, _putE, _closeE, _tE] = request.security(ethSymbol, workTf, f_calc_sig())
+    callSigE := _callE
+    putSigE  := _putE
+    closeE   := _closeE
+    tE       := _tE
+
+// 入场推送（二饼）
+if monitorEth and calcEnabled
+    symName = str.replace(ethSymbol, "BINANCE:", "")
+    if barstate.isconfirmed and callSigE
+        alert('{"msgtype":"text","text":{"content":"二饼事件\\n合约：' + symName +
+              '\\n当前价格：' + str.tostring(closeE) +
+              '\\n时间：' + fmtCN(tE) +
+              '\\n当前K线：' + tfText +
+              '\\n信号：涨📈（CALL）"}}', alert.freq_once_per_bar_close)
+    if barstate.isconfirmed and putSigE
+        alert('{"msgtype":"text","text":{"content":"二饼事件\\n合约：' + symName +
+              '\\n当前价格：' + str.tostring(closeE) +
+              '\\n时间：' + fmtCN(tE) +
+              '\\n当前K线：' + tfText +
+              '\\n信号：跌📉（PUT）"}}', alert.freq_once_per_bar_close)
+
+// 结果评估与推送（二饼，递推累计）
+var int callTotalE = 0
+var int callWinsE  = 0
+var int putTotalE  = 0
+var int putWinsE   = 0
+
+if monitorEth and calcEnabled
+    callEntryE = callSigE ? closeE : na
+    putEntryE  = putSigE  ? closeE : na
+
+    callDoneNowE = callSigE[holdBars]
+    putDoneNowE  = putSigE[holdBars]
+    callEntryNE  = callEntryE[holdBars]
+    putEntryNE   = putEntryE[holdBars]
+    callWinNowE  = callDoneNowE and closeE > callEntryNE
+    putWinNowE   = putDoneNowE  and closeE < putEntryNE
+
+    if barstate.isconfirmed
+        callTotalE := nz(callTotalE[1]) + (callDoneNowE ? 1 : 0)
+        putTotalE  := nz(putTotalE[1])  + (putDoneNowE  ? 1 : 0)
+        callWinsE  := nz(callWinsE[1])  + (callWinNowE  ? 1 : 0)
+        putWinsE   := nz(putWinsE[1])   + (putWinNowE   ? 1 : 0)
+
+        symName     = str.replace(ethSymbol, "BINANCE:", "")
+
+        if callDoneNowE
+            alert('{"msgtype":"text","text":{"content":"二饼事件（统计）\\n类型：CALL ' + (callWinNowE ? '赢 ✅' : '亏 ❌') +
+                  '\\n合约：' + symName +
+                  '\\n入场价：' + str.tostring(callEntryNE) + '（' + fmtCN(tE[holdBars]) + '）' +
+                  '\\n到期价：' + str.tostring(closeE)      + '（' + fmtCN(tE) + '）' +
+                  '\\n当前K线：' + tfText + '"}}', alert.freq_once_per_bar)
+
+        if putDoneNowE
+            alert('{"msgtype":"text","text":{"content":"二饼事件（统计）\\n类型：PUT ' + (putWinNowE ? '赢 ✅' : '亏 ❌') +
+                  '\\n合约：' + symName +
+                  '\\n入场价：' + str.tostring(putEntryNE) + '（' + fmtCN(tE[holdBars]) + '）' +
+                  '\\n到期价：' + str.tostring(closeE)     + '（' + fmtCN(tE) + '）' +
+                  '\\n当前K线：' + tfText + '"}}', alert.freq_once_per_bar)
+
+// ================= （图上）胜率表格：BTC / ETH / 总 =================
+callWR_B = callTotal  > 0 ? 100.0 * callWins  / callTotal  : na
+putWR_B  = putTotal   > 0 ? 100.0 * putWins   / putTotal   : na
+allTot_B = callTotal + putTotal
+allWin_B = callWins  + putWins
+allWR_B  = allTot_B  > 0 ? 100.0 * allWin_B  / allTot_B    : na
+
+callWR_E = monitorEth and callTotalE > 0 ? 100.0 * callWinsE / callTotalE : na
+putWR_E  = monitorEth and putTotalE  > 0 ? 100.0 * putWinsE  / putTotalE  : na
+allTot_E = monitorEth ? callTotalE + putTotalE : na
+allWin_E = monitorEth ? callWinsE  + putWinsE  : na
+allWR_E  = monitorEth and allTot_E > 0 ? 100.0 * allWin_E / allTot_E : na
+
+// 总计（BTC+ETH）
+callWinsAll  = callWins + (monitorEth ? callWinsE : 0)
+callTotalAll = callTotal + (monitorEth ? callTotalE : 0)
+putWinsAll   = putWins  + (monitorEth ? putWinsE  : 0)
+putTotalAll  = putTotal + (monitorEth ? putTotalE : 0)
+allTot_All   = (callTotal + putTotal) + (monitorEth ? (callTotalE + putTotalE) : 0)
+allWin_All   = (callWins  + putWins ) + (monitorEth ? (callWinsE  + putWinsE ) : 0)
+
+callWR_All  = callTotalAll > 0 ? 100.0 * callWinsAll / callTotalAll : na
+putWR_All   = putTotalAll  > 0 ? 100.0 * putWinsAll  / putTotalAll  : na
+allWR_All   = allTot_All   > 0 ? 100.0 * allWin_All  / allTot_All   : na
+
+// 非 2 分钟提示
+if barstate.islast and not calcEnabled
+    label.new(bar_index, high, "⚠ 请将图表周期切换为 2 分钟\n脚本已暂停统计与推送", style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+
+// ================= 条件提醒（兼容老用法） =================
+alertcondition(FastBreakHi, title="PUT (close)",  message="PUT")
+alertcondition(FastBreakLo, title="CALL (close)", message="CALL")

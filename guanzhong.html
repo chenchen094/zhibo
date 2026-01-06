@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>观众端</title>
+</head>
+
+<body>
+    <h2>观众端</h2>
+    <input type="text" id="aid" placeholder="输入主播ID">
+    <button onclick="join()">2. 进入直播间</button>
+    <p id="msg" style="color:blue">等待操作...</p>
+    <video id="rv" autoplay playsinline controls style="width:600px; background:#000;"></video>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script>
+        const peer = new Peer();
+        function join() {
+            const id = document.getElementById('aid').value;
+            const msg = document.getElementById('msg');
+            msg.innerText = "正在尝试连接主播...";
+
+            // 发送一个空流触发握手
+            const call = peer.call(id, new MediaStream());
+
+            call.on('stream', stream => {
+                msg.innerText = "✅ 收到画面！请点击播放器如果没声音";
+                const video = document.getElementById('rv');
+                video.srcObject = stream;
+                // 处理浏览器拦截自动播放的问题
+                video.play().catch(() => {
+                    msg.innerText = "⚠️ 画面被浏览器拦截，请点击视频框开始播放";
+                });
+            });
+
+            // 15秒超时检查
+            setTimeout(() => {
+                if (!document.getElementById('rv').srcObject) {
+                    msg.innerText = "❌ 连接超时。原因：1.ID错 2.主播未开采集 3.跨网屏蔽";
+                    msg.style.color = "red";
+                }
+            }, 10000);
+        }
+    </script>
+</body>
+
+</html>

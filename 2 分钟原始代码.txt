@@ -1,0 +1,86 @@
+//@version=2
+//
+// Title: "BB and RSI Indicator Alert v0.3 by JustUncleL".
+// Author: JustUncleL
+// Date:   12-Jul-2016
+// Version: 0.3
+//
+// * Description *
+//   Breif: This indicator alert is a variation of one found in well known Broker's marketing
+//          videos. It uses Bollinger bands, RSI and moving averages.
+//          Includes pre-warning alert conditions. Strategy and settings designed 
+//          for 1min charts and Binary Options, but could work for up to 15 min charts.
+//
+//   Full:  Bollinger is calculated from SMA BB(14,2).
+//          RSI(11) with 75/25 Levels boundaries, need to be within channel for
+//          valid trade.
+//          Optional Market direction is calculated by two EMA (200 and 50):
+//          When 200ema rising and 50ema above 200ema then market going up,
+//          When 200ema falling and 60ema below 200ema then market going down.
+//
+//          Potential Bollinger Breakout reversal trades identified by shapes:
+//          The purple diamond is the pre-warning purple alert and
+//          the green and red pointers with the PUT/CALL labels are the trade alerts.
+//          Trade in specified direction 60sec (can also use 120sec without Martingale).
+//
+// * Notes *
+//   - The original videos specified a Martingale money management strategy, be carefull
+//   using this management. When I use Martingale I recommend go to 3 levels: 10, 25, 65 
+//   if no win at 65 stop trading this alert and start next alert back  at 10, 
+//   you should recovery loss by future wins given you are able to get a resaonable ITM rate with
+//   this strategy. Alternatively instead of using Martingale use 120sec Binary Option
+//   trade.
+//   - Be wary of break alerts on a steep Bollinger, they tend to keep running away for
+//     while, especially if steep on both sides of Bollinger channel.
+//   - As with most of this style of indicator the alert conditions will redraw until
+//   the candle is closed. For me this is okay, as the Alert is only a potential trade
+//   and final decision to trade is made by me. You need topractise this and be aware of
+//   market news, sessions boundaries, slow trading periods etc. Plan your periods
+//   of when you should trade.
+//
+// * Version Changes *
+//   0.3 : Some fine tuning of default settings.
+//         Added adjustment for how far the bar body needs to be past the Bollinger boundary.
+//         Added code to allow different Moving Average types to be selected for market direction.
+//         (23-Nov-2016)
+//   0.2 : Adjusted default settings and modified optional market direction filter (22-Jul-2016)
+//   0.1 : Original Version.
+//
+// * Reference *
+//  - This code use Bollinger calc by JayRogers in "[JR] Multi Bollinger Heat Bands - EMA/Break options"
+//  - MA variant function from Scalp Jockey - MTF MA Cross Visual Strategizer by JayRogers
+//  - Original idea from well know Broker's marketing youtube videos.
+//
+study(shorttitle="[UL]BBRSI v0.3", title="BB and RSI Indicator Alert v0.3 by JustUncleL", overlay=true, scale=scale.right)
+
+// Bollinger Bands Inputs
+bb_length = input(14, minval=5, title="Bollinger Length")
+bb_mult = input(2.0, title="Bollinger Standard Deviation", minval=0.5, maxval=10)
+//
+rsiLength = input(11,minval=1,title="RSI Length")
+rsiUpper  = input(75,minval=51,maxval=99,title="RSI Upper Level")
+rsiLower  = input(25,minval=1,maxval=49,title="RSI Lower Level")
+//
+dFilter   = input(true,title="Use Directional Filter")
+// Fast MA - type, length
+fastTyp = input(defval="EMA", title="Fast MA Type: SMA, EMA, WMA, VWMA, SMMA, DEMA, TEMA, HullMA, ZEMA, TMA, SSMA ( case sensitive )", type=string)
+fastLen = input(defval=50, title="Fast - Length", minval=1)
+// Slow MA - type, length
+slowTyp = input(defval="EMA", title="Slow MA Type: SMA, EMA, WMA, VWMA, SMMA, DEMA, TEMA, HullMA, ZEMA, TMA, SSMA ( case sensitive )", type=string)
+slowLen = input(defval=200, title="Slow - Length", minval=1)
+//
+dCandles  = input(3, minval=2, title="Candles to test Market Direction")
+resoln_   = input(0, minval=0, title="Candle body, how far past BB boundary Points")
+
+//-- FUNCTIONS
+// Returns MA input selection variant, default to SMA if blank or typo.
+variant(type, src, len) =>
+    v1 = sma(src, len)                                                  // Simple
+    v2 = ema(src, len)                                                  // Exponential
+    v3 = wma(src, len)                                                  // Weighted
+    v4 = vwma(src, len)                                                 // Volume Weighted
+    v5 = na(v5[1]) ? sma(src, len) : (v5[1] * (len - 1) + src) / len    // Smoothed
+    v6 = 2 * v2 - ema(v2, len)                                          // Double Exponential
+    v7 = 3 * (v2 - ema(v2, len)) + ema(ema(v2, len), len)               // Triple Exponential
+    v8 = wma(2 * wma(src, len / 2) - wma(src, len), round(sqrt(len)))   // Hull
+    v11 = sma(sm

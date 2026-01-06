@@ -1,0 +1,275 @@
+//@version=6
+indicator("1 分钟最牛指标 2",
+     overlay = true, max_lines_count = 500, max_bars_back = 1000)
+
+//==================== 参数 ====================//
+// ——平滑
+group_smoothing = "Smoothing"
+h       = input.float(16.0, "NW Smoothing Factor (h)", step = 0.5, tooltip = "高斯核带宽（越大越平滑，仅用历史，避免重绘）", group = group_smoothing)
+nw_len  = input.int(50,  "NW 窗口长度(历史条数)", minval = 5, maxval = 300, group = group_smoothing)
+
+// ——布林
+group_boll = "Bollinger Settings (Short/Med/Long)"
+short_period = input.int(20, "L1 Period (短)", inline = "short", group = group_boll)
+short_stdev  = input.float(3.0, "Deviation",  inline = "short", group = group_boll)
+med_period   = input.int(75, "L1 Period2 (中)", inline = "med", group = group_boll)
+med_stdev    = input.float(4.0, "Deviation",    inline = "med", group = group_boll)
+long_period  = input.int(100, "L2 Period (长)", inline = "long", group = group_boll)
+long_stdev1  = input.float(4.25, "Deviation A", inline = "long", group = group_boll)
+long_stdev2  = input.float(5.0,  "Deviation B", inline = "long", group = group_boll)
+
+// ——绘图显示
+group_graphics = "Plots"
+bands_lvl1 = input.bool(true,  "显示 Level 1 (短+中)", group = group_graphics)
+bands_lvl2 = input.bool(true,  "显示 Level 2 (长A+长B)", group = group_graphics)
+plotsOn    = input.bool(true,  "绘制线", group = group_graphics)
+plot_thick = input.int(2,      "线宽", group = group_graphics)
+
+// ——信号检测源
+group_logic = "Signal Source"
+label_src = input.string("Close", "Label Source", options = ["Pivots", "Close", "High/Low"], group = group_logic, tooltip = "用哪个价格来源判定是否突破 1 级布林")
+sens      = input.int(4, "Pivots 灵敏度（左右K数）", minval = 1, group = group_logic)
+
+// ——通知
+group_notif = "Notifications"
+notifs = input.bool(false, "上/下轨首破通知 (L1)", group = group_notif)
+
+//==================== 非重绘 NW 平滑 ====================//
+guass_w(x, hh) =>
+    math.exp(-(x * x) / (2.0 * hh * hh))
+
+nw_causal(src, hh, len) =>
+    float num = 0.0, den = 0.0
+    for i = 0 to len - 1
+        w = guass_w(i, hh)
+        num += nz(src[i]) * w
+        den += w
+    den != 0.0 ? num / den : na
+
+// 源：hlc3
+tp = (high + low + close) / 3.0
+basisNW = nw_causal(tp, h, nw_len)
+
+//==================== NW-Bollinger 计算 ====================//
+stdev_short = ta.stdev(tp - basisNW, short_period)
+stdev_med   = ta.stdev(tp - basisNW, med_period)
+stdev_long  = ta.stdev(tp - basisNW, long_period)
+
+// Level 1（短 & 中）
+BOLU_FIRST = basisNW + short_stdev * stdev_short
+BOLD_FIRST = basisNW - short_stdev * stdev_short
+
+BOLU_SECOND = basisNW + med_stdev * stdev_med
+BOLD_SECOND = basisNW - med_stdev * stdev_med
+
+// Level 2（长A & 长B）
+BOLU_THIRD  = basisNW + long_stdev1 * stdev_long
+BOLD_THIRD  = basisNW - long_stdev1 * stdev_long
+
+BOLU_FOURTH = basisNW + long_stdev2 * stdev_long
+BOLD_FOURTH = basisNW - long_stdev2 * stdev_long
+
+//==================== 绘图（顶层） ====================//
+showBasis = plotsOn
+showL1    = plotsOn and bands_lvl1
+showL2    = plotsOn and bands_lvl2
+
+p_basis = plot(showBasis ? basisNW : na, title="NW Basis", color=color.new(color.navy, 0), linewidth=plot_thick)
+p_u1  = plot(showL1 ? BOLU_FIRST  : na, title="L1 Upper",  color=color.new(color.blue, 0),  linewidth=plot_thick)
+p_l1  = plot(showL1 ? BOLD_FIRST  : na, title="L1 Lower",  color=color.new(color.blue, 0),  linewidth=plot_thick)
+p_u1b = plot(showL1 ? BOLU_SECOND : na, title="L1 Upper2", color=color.new(color.blue, 70))
+p_l1b = plot(showL1 ? BOLD_SECOND : na, title="L1 Lower2", color=color.new(color.blue, 70))
+fill(p_u1, p_l1, color=color.new(color.gray, 90))
+
+p_u2a = plot(showL2 ? BOLU_THIRD  : na, title="L2 UpperA", color=color.new(color.purple, 0))
+p_l2a = plot(showL2 ? BOLD_THIRD  : na, title="L2 LowerA", color=color.new(color.purple, 0))
+p_u2b = plot(showL2 ? BOLU_FOURTH : na, title="L2 UpperB", color=color.new(color.purple, 70))
+p_l2b = plot(showL2 ? BOLD_FOURTH : na, title="L2 LowerB", color=color.new(color.purple, 70))
+
+//==================== 枢轴（信号源可选，不重绘） ====================//
+pivot_rad  = sens
+float pivot_high = ta.pivothigh(high, pivot_rad, pivot_rad)
+float pivot_low  = ta.pivotlow(low,  pivot_rad, pivot_rad)
+
+//==================== 胜率统计（No-repaint） ====================//
+group_stats = "Stats / Winrate"
+calcEnabled = input.bool(true, "启用统计", group = group_stats)
+holdMins    = input.int(10, "统计持有时长（分钟）", minval = 1, group = group_stats)
+avgMode     = input.string("CALL+PUT", "平均间隔统计信号", options=["CALL+PUT","CALL 仅","PUT 仅"], group=group_stats)
+
+tfSec    = math.max(1, timeframe.in_seconds(timeframe.period))
+holdBars = math.max(1, math.ceil(holdMins * 60.0 / tfSec))
+
+tfText() =>
+    string tf = timeframe.period
+    if timeframe.isseconds
+        tf := str.tostring(timeframe.multiplier) + " 秒"
+    else if timeframe.isminutes
+        tf := str.tostring(timeframe.multiplier) + " 分钟"
+    else if timeframe.isdaily
+        tf := str.tostring(timeframe.multiplier) + " 天"
+    else if timeframe.isweekly
+        tf := str.tostring(timeframe.multiplier) + " 周"
+    else if timeframe.ismonthly
+        tf := str.tostring(timeframe.multiplier) + " 月"
+    tf
+tf_str = tfText()
+
+// ——以“1级布林 FIRST 轨道”为信号判定（首破）
+bool putBreak = switch label_src
+    "Pivots"   => not na(pivot_high) and pivot_high > nz(BOLU_FIRST[pivot_rad])
+    "High/Low" => high > BOLU_FIRST
+    => close > BOLU_FIRST
+
+bool callBreak = switch label_src
+    "Pivots"   => not na(pivot_low)  and pivot_low  < nz(BOLD_FIRST[pivot_rad])
+    "High/Low" => low  < BOLD_FIRST
+    => close < BOLD_FIRST
+
+// ——仅在首破那一根且收盘确认
+putSig  = calcEnabled and barstate.isconfirmed and putBreak  and not putBreak[1]
+callSig = calcEnabled and barstate.isconfirmed and callBreak and not callBreak[1]
+
+// ——记录入场价（用信号当根的收盘价）
+putEntry  = putSig  ? close : na
+callEntry = callSig ? close : na
+
+// ——到期（holdBars 根后）评估胜负
+putDoneNow   = putSig[holdBars]
+callDoneNow  = callSig[holdBars]
+putEntryN    = putEntry[holdBars]
+callEntryN   = callEntry[holdBars]
+putWinNow    = putDoneNow  and close < putEntryN
+callWinNow   = callDoneNow and close > callEntryN
+
+// ——累计计数（不重绘：仅在收盘统计）
+var int putTotal  = 0
+var int putWins   = 0
+var int callTotal = 0
+var int callWins  = 0
+
+if barstate.isconfirmed and calcEnabled
+    putTotal  += putDoneNow  ? 1 : 0
+    callTotal += callDoneNow ? 1 : 0
+    putWins   += putWinNow   ? 1 : 0
+    callWins  += callWinNow  ? 1 : 0
+
+wrFmt(wins, total) => total > 0 ? str.tostring(math.round(100 * wins / total, 1)) + "%" : "-"
+
+putWR  = putTotal  > 0 ? 100.0 * putWins  / putTotal  : na
+callWR = callTotal > 0 ? 100.0 * callWins / callTotal : na
+allTot = putTotal + callTotal
+allWin = putWins  + callWins
+allWR  = allTot   > 0 ? 100.0 * allWin   / allTot    : na
+
+// ========= 平均“多少时间开一单” ========= //
+edgeSelected = avgMode == "CALL 仅" ? callSig : avgMode == "PUT 仅" ? putSig : (callSig or putSig)
+var int   prevTs  = na
+var float sumMin  = 0.0
+var int   cntInt  = 0
+if barstate.isconfirmed and calcEnabled and edgeSelected
+    if not na(prevTs)
+        sumMin += (time_close - prevTs) / 60000.0
+        cntInt += 1
+    prevTs := time_close
+avgMin = cntInt > 0 ? sumMin / cntInt : na
+
+// ================= 工具：北京时间 =================
+fmtCN(ts) => str.format("{0,time,yyyy-MM-dd HH:mm:ss}", ts)
+
+// ================= 统一推送逻辑（结果优先） =================
+hasResultBar = (callDoneNow or putDoneNow)
+
+
+// ——入场消息（CALL/PUT）
+msg_entry_call = str.format(
+    '{{"msgtype":"text","text":{{"content":"测试 事件\\n合约：{0}\\n当前价格：{1}\\n时间：{2}\\n当前K线：{3}\\n信号：涨📈（CALL｜首破L1下轨）"}}}}',
+    syminfo.ticker,
+    str.tostring(close, format.mintick),
+    fmtCN(time_close),
+    tf_str
+)
+
+msg_entry_put = str.format(
+    '{{"msgtype":"text","text":{{"content":"测试 事件\\n合约：{0}\\n当前价格：{1}\\n时间：{2}\\n当前K线：{3}\\n信号：跌📉（PUT｜首破L1上轨）"}}}}',
+    syminfo.ticker,
+    str.tostring(close, format.mintick),
+    fmtCN(time_close),
+    tf_str
+)
+
+// ——结果消息（先准备“赢/亏”文案）
+res_call = callWinNow ? "赢 ✅" : "亏 ❌"
+res_put  = putWinNow  ? "赢 ✅" : "亏 ❌"
+
+msg_result_call = str.format(
+    '{{"msgtype":"text","text":{{"content":"NW-BB 结果\\n类型：CALL {0}\\n合约：{1}\\n入场价：{2}（{3}）\\n到期价：{4}（{5}）\\n当前K线：{6}"}}}}',
+    res_call,
+    syminfo.ticker,
+    str.tostring(callEntryN, format.mintick),
+    fmtCN(time_close[holdBars]),
+    str.tostring(close,      format.mintick),
+    fmtCN(time_close),
+    tf_str
+)
+
+msg_result_put = str.format(
+    '{{"msgtype":"text","text":{{"content":"NW-BB 结果\\n类型：PUT {0}\\n合约：{1}\\n入场价：{2}（{3}）\\n到期价：{4}（{5}）\\n当前K线：{6}"}}}}',
+    res_put,
+    syminfo.ticker,
+    str.tostring(putEntryN, format.mintick),
+    fmtCN(time_close[holdBars]),
+    str.tostring(close,     format.mintick),
+    fmtCN(time_close),
+    tf_str
+)
+
+// ——结果优先；同根可能有两条结果（CALL/PUT），用 freq_all 允许两条都发
+if barstate.isconfirmed and calcEnabled
+    if hasResultBar
+        if callDoneNow
+            label.new(bar_index, high, "CALL 结果: " + (callWinNow ? "赢 ✅" : "亏 ❌") +
+                      "\n入: " + str.tostring(callEntryN, format.mintick) + " @ " + fmtCN(time_close[holdBars]) +
+                      "\n出: " + str.tostring(close,      format.mintick) + " @ " + fmtCN(time_close),
+                      style=label.style_label_down, textcolor=color.white,
+                      color=callWinNow ? color.new(color.green, 0) : color.new(color.red, 0))
+            alert(msg_result_call, alert.freq_all)
+        if putDoneNow
+            label.new(bar_index, low, "PUT 结果: " + (putWinNow ? "赢 ✅" : "亏 ❌") +
+                      "\n入: " + str.tostring(putEntryN, format.mintick) + " @ " + fmtCN(time_close[holdBars]) +
+                      "\n出: " + str.tostring(close,     format.mintick) + " @ " + fmtCN(time_close),
+                      style=label.style_label_up, textcolor=color.white,
+                      color=putWinNow ? color.new(color.green, 0) : color.new(color.red, 0))
+            alert(msg_result_put, alert.freq_all)
+    else
+        // 没有结果时才发入场，避免同根入场把结果“顶掉”
+        if callSig
+            alert(msg_entry_call, alert.freq_once_per_bar_close)
+        if putSig
+            alert(msg_entry_put,  alert.freq_once_per_bar_close)
+
+// ——右上角表格
+var table tb = table.new(position.top_right, 2, 8, frame_color = color.new(color.white,85), border_width = 1)
+if barstate.islast
+    table.cell(tb, 0, 0, "项目", bgcolor = color.new(color.silver,85))
+    table.cell(tb, 1, 0, "当前图表")
+    table.cell(tb, 0, 1, "统计周期(分钟)", bgcolor = color.new(color.silver,85))
+    table.cell(tb, 1, 1, str.tostring(holdMins))
+    table.cell(tb, 0, 2, "CALL 胜率/完成", bgcolor = color.new(color.green,85))
+    table.cell(tb, 1, 2, (na(callWR) ? "-" : str.tostring(math.round(callWR,1)) + "%") + " / " + str.tostring(callTotal))
+    table.cell(tb, 0, 3, "PUT 胜率/完成",  bgcolor = color.new(color.red,85))
+    table.cell(tb, 1, 3, (na(putWR)  ? "-" : str.tostring(math.round(putWR,1))  + "%") + " / " + str.tostring(putTotal))
+    table.cell(tb, 0, 4, "总胜率/完成",   bgcolor = color.new(color.blue,85))
+    table.cell(tb, 1, 4, (na(allWR)  ? "-" : str.tostring(math.round(allWR,1))  + "%") + " / " + str.tostring(allTot))
+    table.cell(tb, 0, 5, "CALL 赢 / PUT 赢", bgcolor = color.new(color.teal,85))
+    table.cell(tb, 1, 5, str.tostring(callWins) + " / " + str.tostring(putWins))
+    table.cell(tb, 0, 6, "当前周期", bgcolor = color.new(color.silver,85))
+    table.cell(tb, 1, 6, tf_str)
+    table.cell(tb, 0, 7, "平均间隔(分钟) • " + avgMode, bgcolor = color.new(color.silver,85))
+    table.cell(tb, 1, 7, na(avgMin) ? "-" : str.tostring(math.round(avgMin, 1)))
+
+// ——报警（首破L1）— 可用于创建 TradingView 警报
+alertcondition(notifs and putSig,  title = "PUT (break L1 upper)", message = "PUT")
+alertcondition(notifs and callSig, title = "CALL (break L1 lower)", message = "CALL")
+alertcondition(callDoneNow, title = "RESULT CALL (hold)", message = "RESULT_CALL")
+alertcondition(putDoneNow,  title = "RESULT PUT (hold)",  message = "RESULT_PUT")

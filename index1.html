@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>合约投资平台</title>
+    <meta name="description" content="科技感强的合约投资平台着陆页，包含复利模拟器、折线图、胜率面板与合规说明。" />
+    <style>
+        /* ===== 设计系统：霓虹深色 + 玻璃拟态 ===== */
+        :root {
+            --bg: #080a10;
+            /* 主背景 */
+            --panel: rgba(255, 255, 255, .06);
+            /* 玻璃卡 */
+            --border: rgba(255, 255, 255, .14);
+            --txt: #e7ecf3;
+            /* 文字 */
+            --muted: #9fb0c6;
+            /* 次要文字 */
+            --neon: #00ffd5;
+            /* 霓虹青 */
+            --neon2: #8a63ff;
+            /* 霓虹紫 */
+            --accent: #19d3ff;
+            /* 高亮蓝 */
+            --danger: #ff4d4d;
+            --success: #4dffb4;
+            --card-radius: 18px;
+            --shadow: 0 10px 30px rgba(0, 0, 0, .35), 0 1px 0 rgba(255, 255, 255, .05) inset;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            margin: 0;
+            color: var(--txt);
+            background: radial-gradient(1200px 600px at 85% -10%, rgba(138, 99, 255, .25), transparent),
+                radial-gradient(900px 500px at 10% 10%, rgba(0, 255, 213, .18), transparent),
+                linear-gradient(180deg, #0a0e16, #0a0d14 40%, #090b12 100%);
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, PingFang SC, Hiragino Sans GB, Microsoft YaHei, "Helvetica Neue", Arial, Noto Sans CJK SC, sans-serif;
+            letter-spacing: .1px;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none
+        }
+
+        .container {
+            width: min(1200px, 92vw);
+            margin: 0 auto
+        }
+
+        .grid {
+            display: grid;
+            gap: 18px
+        }
+
+        /* —— 顶部导航 —— */
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: saturate(1.4) blur(10px);
+            background: linear-gradient(180deg, rgba(12, 14, 20, .8), rgba(12, 14, 20, .35));
+            border-bottom: 1px solid var(--border)
+        }
+
+        .nav-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 0
+        }
+
+        .brand {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-weight: 700
+        }
+
+        .logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: conic-gradient(from 0deg, var(--neon), var(--neon2), var(--accent), var(--neon));
+            box-shadow: 0 0 24px rgba(0, 255, 213, .5)
+        }
+
+        .nav-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center
+        }
+
+        .btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02));
+            color: var(--txt);
+            cursor: pointer;
+            transition: .2s all ease;
+            box-shadow: var(--shadow)
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(255, 255, 255, .22)
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(0, 255, 213, .35), rgba(138, 99, 255, .35));
+            border: 1px solid rgba(0, 255, 213, .55);
+            box-shadow: 0 0 30px rgba(0, 255, 213, .22)
+        }
+
+        .tag {
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: 12px;
+            color: var(--muted);
+            backdrop-filter: blur(6px);
+            background: rgba(255, 255, 255, .04)
+        }
+
+        /* —— Hero —— */
+        .hero {
+            padding: 56px 0 24px
+        }
+
+        .hero h1 {
+            font-size: clamp(28px, 6vw, 54px);
+            line-height: 1.08;
+            margin: 6px 0 10px;
+            text-shadow: 0 0 28px rgba(0, 255, 213, .25)
+        }
+
+        .hero p {
+            color: var(--muted);
+            font-size: clamp(14px, 2.4vw, 18px)
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 12px;
+            margin-top: 18px;
+            flex-wrap: wrap
+        }
+
+        /* —— 面板卡 —— */
+        .card {
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius);
+            background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02));
+            box-shadow: var(--shadow)
+        }
+
+        .card .hd {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .card .bd {
+            padding: 16px
+        }
+
+        /* —— KPI —— */
+        .kpis {
+            grid-template-columns: repeat(4, minmax(0, 1fr))
+        }
+
+        .kpi h3 {
+            margin: 0;
+            font-size: 14px;
+            color: var(--muted)
+        }
+
+        .kpi .num {
+            margin-top: 6px;
+            font-weight: 800;
+            font-size: 26px
+        }
+
+        .trend {
+            font-size: 12px;
+            color: var(--success)
+        }
+
+        /* —— 模拟器+图表 —— */
+        .sim {
+            grid-template-columns: 1.1fr .9fr
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .field label {
+            font-size: 12px;
+            color: var(--muted)
+        }
+
+        .input,
+        .select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, .04);
+            color: var(--txt)
+        }
+
+        .note {
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .table-wrap {
+            max-height: 280px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 12px
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, .07);
+            text-align: right
+        }
+
+        th:first-child,
+        td:first-child {
+            text-align: left
+        }
+
+        /* —— 迷你折线 —— */
+        .spark {
+            width: 100%;
+            height: 220px
+        }
+
+        .legend {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 12px;
+            color: var(--muted)
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--neon)
+        }
+
+        /* —— 策略/胜率区块 —— */
+        .cols-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr))
+        }
+
+        .list {
+            display: grid;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--muted)
+        }
+
+        /* —— 底部 —— */
+        .footer {
+            margin: 40px 0 60px;
+            color: #98a7bd
+        }
+
+        .disclaimer {
+            font-size: 12px;
+            line-height: 1.6
+        }
+
+        /* —— 响应式 —— */
+        @media (max-width: 980px) {
+            .kpis {
+                grid-template-columns: repeat(2, 1fr)
+            }
+
+            .sim {
+                grid-template-columns: 1fr
+            }
+
+            .cols-3 {
+                grid-template-columns: 1fr
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="nav">
+        <div class="container nav-inner">
+            <div class="brand">
+                <div class="logo" aria-hidden="true"></div>
+                <span>合约投资平台</span>
+                <span class="tag">Tech Alpha</span>
+            </div>
+            <div class="nav-actions">
+                <a class="btn" href="#sim">收益模拟器</a>
+                <a class="btn btn-primary" href="#cta">立即体验</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Hero -->
+        <section class="hero">
+            <span class="tag">次世代 · 科技量化 · 玻璃拟态</span>
+            <h1>用「复利 + 风控」让资金曲线更稳健</h1>
+            <p>可视化收益模拟、实时胜率面板与多周期策略池，助你在事件合约/合约交易中保持纪律与效率。
+                <!-- <br/>本页为纯 HTML 单文件模板，直接保存为 <strong>index.html</strong> 即可使用。</p> -->
+            <div class="hero-cta">
+                <a class="btn btn-primary" href="#sim">开始模拟</a>
+                <a class="btn" href="#features">查看特性</a>
+            </div>
+        </section>
+
+        <!-- KPI Cards -->
+        <section class="grid kpis">
+            <div class="card kpi">
+                <div class="bd">
+                    <h3>近 7 天综合胜率</h3>
+                    <div class="num" id="kpi-wr7">—</div>
+                    <div class="trend" id="kpi-wr7-note">基于示例数据实时计算</div>
+                </div>
+            </div>
+            <div class="card kpi">
+                <div class="bd">
+                    <h3>近 30 天综合胜率</h3>
+                    <div class="num" id="kpi-wr30">—</div>
+                    <div class="trend" id="kpi-wr30-note">模拟口径：到期计数</div>
+                </div>
+            </div>
+            <div class="card kpi">
+                <div class="bd">
+                    <h3>累计回测样本</h3>
+                    <div class="num" id="kpi-samples">—</div>
+                    <div class="trend">样本越多，越具参考意义</div>
+                </div>
+            </div>
+            <div class="card kpi">
+                <div class="bd">
+                    <h3>资金曲线（示例年化）</h3>
+                    <div class="num" id="kpi-cagr">—</div>
+                    <div class="trend">演示：非真实收益</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 模拟器 + 折线图 -->
+        <section id="sim" class="grid sim" style="margin-top:18px">
+            <div class="card">
+                <div class="hd"><strong>复利收益模拟器</strong><span class="tag">Pyramid / Compound</span></div>
+                <div class="bd">
+                    <div class="row">
+                        <div class="field">
+                            <label>初始本金（U）</label>
+                            <input class="input" id="amount" type="number" value="100" min="10" step="10" />
+                        </div>
+                        <div class="field">
+                            <label>预计日化收益率（%）</label>
+                            <input class="input" id="roi" type="number" value="1.2" step="0.1" />
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top:12px">
+                        <div class="field">
+                            <label>天数</label>
+                            <input class="input" id="days" type="number" value="30" min="1" max="365" />
+                        </div>
+                        <div class="field">
+                            <label>模式</label>
+                            <select class="select" id="mode">
+                                <option value="compound" selected>复利（收益自动滚入）</option>
+                                <option value="simple">单利（收益每日取出）</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top:12px">
+                        <div class="field">
+                            <label>结果摘要</label>
+                            <div class="note" id="summary">—</div>
+                        </div>
+                        <div class="field" style="align-items:flex-end">
+                            <button class="btn btn-primary" id="run">重新计算</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap" style="margin-top:14px">
+                        <table id="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Day</th>
+                                    <th>期初余额</th>
+                                    <th>当日收益</th>
+                                    <th>期末余额</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="hd"><strong>净值曲线（示意）</strong><span class="tag">SVG 内联渲染</span></n>
+                </div>
+                <div class="bd">
+                    <svg class="spark" id="spark" viewBox="0 0 600 220" preserveAspectRatio="none"
+                        aria-label="净值曲线"></svg>
+                    <div class="legend" style="margin-top:10px">
+                        <span class="dot"></span> 模拟净值（基于上侧输入参数）
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 策略&胜率区块（静态示例占位，可替换成真实后端数据） -->
+        <section id="features" class="grid cols-3" style="margin-top:18px">
+            <div class="card">
+                <div class="hd"><strong>策略池（示例）</strong><span class="tag">BTC/ETH/期权</span></div>
+                <div class="bd list">
+                    <div>· 裸K + 通道：趋势过滤 + 极值反转</div>
+                    <div>· NW-BB：非重绘核回归 + 多层布林</div>
+                    <div>· 微周期动量：1m→10m 合约事件</div>
+                    <div>· 资金管理：固定分位 / Kelly 上限</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="hd"><strong>胜率面板（示例）</strong><span class="tag">到期口径</span></div>
+                <div class="bd list">
+                    <div>近 7 天：<strong id="demoWR7">—</strong></div>
+                    <div>近 30 天：<strong id="demoWR30">—</strong></div>
+                    <div>样本：<strong id="demoSamples">—</strong></div>
+                    <div class="note">* 仅示例，真实胜率需接入你的交易/回测数据源。</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="hd"><strong>合规与风控</strong><span class="tag">必读</span></div>
+                <div class="bd">
+                    <ul class="list">
+                        <li>严格的仓位上限与回撤阈值</li>
+                        <li>多周期一致性验证与噪声过滤</li>
+                        <li>实时风控开关（拉黑时段/品种）</li>
+                        <li>高风险提示：收益演示不代表未来表现</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="cta" class="card" style="margin-top:18px">
+            <div class="hd"><strong>立即开始</strong><span class="tag">3 步完成</span></div>
+            <div class="bd">
+                <div class="grid" style="grid-template-columns: repeat(3,minmax(0,1fr)); gap:14px">
+                    <div class="card" style="background:rgba(0,255,213,.07); border-color:rgba(0,255,213,.35)">
+                        <div class="bd">① 注册并完成基础 KYC</div>
+                    </div>
+                    <div class="card" style="background:rgba(138,99,255,.07); border-color:rgba(138,99,255,.35)">
+                        <div class="bd">② 绑定交易所 API 或在平台内充值</div>
+                    </div>
+                    <div class="card" style="background:rgba(25,211,255,.07); border-color:rgba(25,211,255,.35)">
+                        <div class="bd">③ 选择策略与风控参数，开启模拟或实盘</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <div class="disclaimer card" style="padding:14px; background:rgba(255,255,255,.03)">
+                <strong>重要声明：</strong>
+                本页面为产品展示与交互原型，所有收益图表与胜率数据为示意或示例，不构成投资建议。合约与期权产品具有高风险，可能导致本金损失。请在理解风险、符合当地法律法规的前提下参与。
+            </div>
+            <div style="opacity:.7; margin-top:10px">© 2025 Tech Alpha Labs</div>
+        </footer>
+    </main>
+
+    <script>
+        // ===== 简易工具 =====
+        const fmt = (n, d = 2) => Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+        // ===== 复利模拟器 =====
+        const elAmt = document.getElementById('amount');
+        const elRoi = document.getElementById('roi');
+        const elDays = document.getElementById('days');
+        const elMode = document.getElementById('mode');
+        const elRun = document.getElementById('run');
+        const elTbl = document.querySelector('#tbl tbody');
+        const elSummary = document.getElementById('summary');
+        const elSpark = document.getElementById('spark');
+
+        function simulate(amount, roiPct, days, mode) {
+            const daily = roiPct / 100;
+            let balStart = amount;
+            let rows = [];
+            let series = [amount];
+            let totalProfit = 0;
+            for (let d = 1; d <= days; d++) {
+                const profit = balStart * daily;
+                const balEnd = mode === 'compound' ? (balStart + profit) : (balStart);
+                rows.push({ day: d, start: balStart, profit, end: mode === 'compound' ? balEnd : (amount + totalProfit + profit) });
+                totalProfit += profit;
+                balStart = mode === 'compound' ? balEnd : balStart; // 单利不变，复利滚入
+                series.push(rows[rows.length - 1].end);
+            }
+            return { rows, series, totalProfit, final: rows.at(-1).end };
+        }
+
+        function renderTable(rows) {
+            elTbl.innerHTML = rows.map(r => `
+        <tr>
+          <td>第 ${r.day} 天</td>
+          <td>${fmt(r.start)}</td>
+          <td style="color:${r.profit >= 0 ? 'var(--success)' : 'var(--danger)'}">${fmt(r.profit)}</td>
+          <td><strong>${fmt(r.end)}</strong></td>
+        </tr>
+      `).join('');
+        }
+
+        function renderSpark(series) {
+            const w = 600, h = 220, pad = 18;
+            const min = Math.min(...series), max = Math.max(...series);
+            const sx = (i) => pad + (w - 2 * pad) * (i / (series.length - 1 || 1));
+            const sy = (v) => h - pad - (h - 2 * pad) * ((v - min) / ((max - min) || 1));
+            let d = '';
+            series.forEach((v, i) => { d += (i ? ' L ' : 'M ') + sx(i) + ',' + sy(v); });
+            elSpark.innerHTML = `
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="${getComputedStyle(document.documentElement).getPropertyValue('--neon').trim()}"/>
+            <stop offset="100%" stop-color="${getComputedStyle(document.documentElement).getPropertyValue('--neon2').trim()}"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="${w}" height="${h}" fill="none" />
+        <path d="${d}" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round" />
+      `;
+        }
+
+        function run() {
+            const amount = Math.max(10, parseFloat(elAmt.value || '100'));
+            const roi = parseFloat(elRoi.value || '1.2');
+            const days = Math.max(1, Math.min(365, parseInt(elDays.value || '30')));
+            const mode = elMode.value;
+            const { rows, series, totalProfit, final } = simulate(amount, roi, days, mode);
+            renderTable(rows);
+            renderSpark(series);
+            elSummary.innerHTML = `
+        <strong>${mode === 'compound' ? '复利' : '单利'}</strong> · 初始 <b>${fmt(amount, 2)}U</b> · 日化 <b>${roi}%</b> · ${days} 天后 <b>${fmt(final, 2)}U</b> ，总收益 <b style="color:var(--success)">${fmt(totalProfit, 2)}U</b>`;
+            // 同步几个 KPI（演示）
+            document.getElementById('kpi-cagr').textContent = `${(roi * 365).toFixed(0)}%（年化示意）`;
+        }
+
+        ['input', 'change'].forEach(evt => {
+            elAmt.addEventListener(evt, run);
+            elRoi.addEventListener(evt, run);
+            elDays.addEventListener(evt, run);
+            elMode.addEventListener(evt, run);
+        });
+        elRun.addEventListener('click', run);
+
+        // ===== 示例胜率数据（仅用于填充 KPI/面板占位） =====
+        (function demoWinrate() {
+            // 随机生成 60 天的结果，1 表示赢，0 表示亏
+            const days = 60; const arr = []; for (let i = 0; i < days; i++) { arr.push(Math.random() < 0.56 ? 1 : 0); }
+            const wr = (a, n) => (100 * a.slice(-n).reduce((s, x) => s + x, 0) / n).toFixed(1) + '%';
+            const samples = 420 + Math.floor(Math.random() * 80);
+            document.getElementById('kpi-wr7').textContent = wr(arr, 7);
+            document.getElementById('kpi-wr30').textContent = wr(arr, 30);
+            document.getElementById('kpi-samples').textContent = samples.toLocaleString('zh-CN');
+            document.getElementById('demoWR7').textContent = document.getElementById('kpi-wr7').textContent;
+            document.getElementById('demoWR30').textContent = document.getElementById('kpi-wr30').textContent;
+            document.getElementById('demoSamples').textContent = samples.toLocaleString('zh-CN');
+        })();
+
+        // 首次渲染
+        run();
+    </script>
+</body>
+
+</html>
