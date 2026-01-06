@@ -2,147 +2,128 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>极简直播 - 最终修复版</title>
+    <title>极简直播间 - 终极修复版</title>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; padding: 20px; }
         .container { width: 100%; max-width: 800px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        #video-wrapper { width: 100%; background: #000; border-radius: 8px; position: relative; aspect-ratio: 16/9; overflow: hidden; }
+        #v-box { width: 100%; background: #000; border-radius: 8px; position: relative; aspect-ratio: 16/9; overflow: hidden; }
         video { width: 100%; height: 100%; }
-        #play-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); color: white; display: none;
-            justify-content: center; align-items: center; cursor: pointer; z-index: 100;
-        }
-        #status { margin-top: 15px; font-weight: bold; color: #1890ff; }
-        .btn { padding: 10px 20px; background: #ff4d4f; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); color:white; display:none; justify-content:center; align-items:center; cursor:pointer; z-index:100; font-size:20px; }
+        #status { margin: 15px 0; font-weight: bold; color: #1890ff; }
+        .btn { padding: 12px 24px; background: #ff4d4f; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div id="video-wrapper">
-        <div id="play-overlay" onclick="manualPlay()">
-            <div style="text-align: center;">
-                <div style="font-size: 50px;">▶</div>
-                <p>画面已就绪，点击开始观看</p>
-            </div>
-        </div>
+    <div id="v-box">
+        <div id="overlay" onclick="manualPlay()">点击开启画面与声音</div>
         <video id="v" autoplay playsinline controls></video>
     </div>
-    
-    <div id="status">连接服务中...</div>
-    
-    <div id="controls" style="margin-top:20px; text-align:center;">
-        <div id="host-zone" style="display:none;">
-            <button class="btn" onclick="startHost()">1. 开启屏幕分享</button>
-        </div>
-        <div id="viewer-zone" style="display:none;">
-            <button class="btn" style="background:#1890ff" onclick="connectToHost()">2. 连不上？点击手动刷新连接</button>
-        </div>
-    </div>
+    <div id="status">系统初始化中...</div>
+    <div id="ui" style="text-align:center;"></div>
 </div>
 
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script>
-    const ROOM_ID = "MY_LIVE_094_FINAL"; // 建议改复杂点防止冲突
+    const ROOM_ID = "LIVE_CHENG_STABLE_888"; 
     const peerConfig = {
         config: {
             'iceServers': [
                 { url: 'stun:stun.l.google.com:19302' },
                 { url: 'stun:stun.qq.com:3478' },
-                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-            ],
-            'sdpSemantics': 'unified-plan'
+                { urls: 'turn:relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+            ]
         }
     };
 
     const videoEl = document.getElementById('v');
     const statusEl = document.getElementById('status');
-    const overlay = document.getElementById('play-overlay');
+    const uiEl = document.getElementById('ui');
+    const overlay = document.getElementById('overlay');
     const params = new URLSearchParams(window.location.search);
     const isHost = params.get('role') === 'host';
 
-    const peer = isHost ? new Peer(ROOM_ID, peerConfig) : new Peer(peerConfig);
+    let peer = new Peer(isHost ? ROOM_ID : null, peerConfig);
+    let localStream = null;
 
     peer.on('open', (id) => {
         if (isHost) {
-            document.getElementById('host-zone').style.display = 'block';
-            statusEl.innerText = "主播端已准备好";
-            videoEl.muted = true;
+            statusEl.innerText = "主播已就绪";
+            uiEl.innerHTML = '<button class="btn" onclick="startHost()">开始屏幕共享直播</button>';
         } else {
-            document.getElementById('viewer-zone').style.display = 'block';
-            statusEl.innerText = "观众端：正在自动连接...";
-            connectToHost();
+            statusEl.innerText = "观众端已就绪，尝试连接...";
+            uiEl.innerHTML = '<button class="btn" style="background:#1890ff" onclick="connect()">画面没出来？点此重连</button>';
+            setTimeout(connect, 1000); 
         }
     });
 
-    // --- 主播端：发送流 ---
+    // --- 主播逻辑 ---
     async function startHost() {
         try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            videoEl.srcObject = stream;
-            statusEl.innerText = "🔴 直播中... 请保持此页面不要关闭";
+            localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            videoEl.srcObject = localStream;
+            videoEl.muted = true;
+            statusEl.innerText = "🔴 直播中...";
             
-            // 重要：每当有新观众连入，就重新发送流
-            peer.on('call', call => {
-                console.log("新观众接入，发送视频流...");
-                call.answer(stream);
+            // 关键：监听呼叫并应答
+            peer.on('call', (call) => {
+                console.log("收到呼叫");
+                call.answer(localStream);
             });
         } catch (e) {
-            statusEl.innerText = "❌ 采集失败，请刷新重试";
+            statusEl.innerText = "授权失败";
         }
     }
 
-    
-    // --- 观众端：连接逻辑修改 ---
-async function connectToHost() {
-    statusEl.innerText = "正在发起视频协商...";
-    
-    try {
-        // 【关键改动】不再发送 new MediaStream()，而是强制要求接收音视频
-        // 我们甚至可以伪造一个静音轨道来骗过浏览器的协商机制
-        const call = peer.call(ROOM_ID, null, {
-            sdpTransform: (sdp) => sdp // 保持原样
-        });
+    // --- 观众逻辑 ---
+    function connect() {
+        if (!peer || peer.disconnected) return;
+        statusEl.innerText = "正在协商媒体轨道...";
+
+        // 核心修复：发送一个伪造的静音轨道来确保 SDP 包含 m=video
+        const silentStream = createSilentStream();
+        const call = peer.call(ROOM_ID, silentStream);
 
         if (!call) {
-            statusEl.innerText = "呼叫创建失败，请刷新重试";
+            statusEl.innerText = "呼叫请求未发出，请检查主播是否在线";
             return;
         }
 
-        call.on('stream', remoteStream => {
-            console.log("✅ 收到媒体流轨道！");
+        call.on('stream', (remoteStream) => {
+            console.log("收到远程视频流");
             videoEl.srcObject = remoteStream;
-            overlay.style.display = 'flex'; 
-            statusEl.innerText = "✅ 连接成功，点画面开始播放";
+            overlay.style.display = 'flex';
+            statusEl.innerText = "✅ 连接成功";
         });
 
-        call.on('error', err => {
-            console.error("呼叫中途出错:", err);
-            statusEl.innerText = "连接中断: " + err;
+        call.on('error', (e) => {
+            statusEl.innerText = "连接错误: " + e.type;
         });
-
-    } catch (e) {
-        console.error("连接异常:", e);
     }
-}
+
+    // 辅助：创建一个微小的空流来强制协商
+    function createSilentStream() {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const stream = canvas.captureStream(1);
+        return stream;
+    }
 
     function manualPlay() {
         videoEl.play().then(() => {
             overlay.style.display = 'none';
-            statusEl.innerText = "播放中...";
         }).catch(() => {
-            videoEl.muted = true; // 强制静音播放
+            videoEl.muted = true;
             videoEl.play();
             overlay.style.display = 'none';
-            statusEl.innerText = "由于浏览器限制，已静音播放，请手动开启音量";
+            statusEl.innerText = "浏览器限制，已静音播放";
         });
     }
 
-    peer.on('error', err => {
-        console.error("Peer Error:", err.type);
-        if (err.type === 'peer-unavailable') statusEl.innerText = "主播未开播或 ID 错误";
-        else statusEl.innerText = "连接出错: " + err.type;
+    peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable') statusEl.innerText = "找不到主播，请确保主播已开启页面";
+        console.error("PeerJS Error:", err.type);
     });
 </script>
 </body>
